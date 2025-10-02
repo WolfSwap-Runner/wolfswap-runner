@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WolfSwap Runner</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Images
+    const wolfImg = new Image();
+    wolfImg.src = "assets/wolf.png";
+    const rockImg = new Image();
+    rockImg.src = "assets/rock.png";
+    const moonImg = new Image();
+    moonImg.src = "assets/moon.png";
+    const bgImg = new Image();
+    bgImg.src = "assets/background.png";
+
+    // Sounds
+    const bgm = new Audio("assets/bgm.mp3");
+    bgm.loop = true;
+    const jumpSound = new Audio("assets/jump.mp3");
+    const coinSound = new Audio("assets/coin.mp3");
+    const gameoverSound = new Audio("assets/gameover.mp3");
+
+    // Wolf
+    const wolf = {
+      x: canvas.width / 4,
+      y: 0,
+      width: 200,
+      height: 200,
+      dy: 0,
+      gravity: 0.8,
+      jumpPower: -16,
+      isJumping: false,
+      rotation: 0
+    };
+
+    let obstacles = [];
+    let moons = [];
+    let frame = 0;
+    let speed = 6;
+    let score = 0;
+    let distance = 0;
+    let best = 0;
+    let gameOver = false;
+    let started = false;
+    let level = 1;
+
+    function jump() {
+      wolf.dy = wolf.jumpPower;
+      wolf.isJumping = true;
+      wolf.rotation = 0;
+      jumpSound.currentTime = 0;
+      jumpSound.play();
+    }
+
+    // Controls
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space") {
+        if (!started) {
+          started = true;
+          resetGame();
+          bgm.play();
+        } else if (!gameOver) {
+          jump();
+        }
+      }
+      if (e.code === "KeyR" && gameOver) {
+        resetGame();
+        bgm.play();
+      }
+    });
+
+    document.addEventListener("touchstart", () => {
+      if (!started) {
+        started = true;
+        resetGame();
+        bgm.play();
+      } else if (!gameOver) {
+        jump();
+      } else {
+        resetGame();
+        bgm.play();
+      }
+    });
+
+    function resetGame() {
+      wolf.y = canvas.height - wolf.height - 50;
+      wolf.dy = 0;
+      wolf.rotation = 0;
+      obstacles = [];
+      moons = [];
+      frame = 0;
+      score = 0;
+      distance = 0;
+      speed = 6;
+      level = 1;
+      gameOver = false;
+    }
+
+    // Rocks spawn more often
+    function spawnObstacles() {
+      if (frame % 80 === 0) { // more frequent
+        let size = 120 + Math.random() * 60;
+        let yPos = Math.random() * (canvas.height - size);
+        obstacles.push({
+          x: canvas.width,
+          y: yPos,
+          width: size,
+          height: size
+        });
+      }
+    }
+
+    // Moons spawn more often
+    function spawnMoons() {
+      if (frame % 160 === 0) { // more frequent
+        let size = 130;
+        let yPos = Math.random() * (canvas.height - size);
+        moons.push({ x: canvas.width, y: yPos, width: size, height: size });
+      }
+    }
+
+    function detectCollision(a, b, padding = 0.4) {
+      return (
+        a.x < b.x + b.width * padding &&
+        a.x + a.width * padding > b.x &&
+        a.y < b.y + b.height * padding &&
+        a.y + a.height * padding > b.y
+      );
+    }
+
+    function update() {
+      if (!started || gameOver) return;
+
+      frame++;
+      distance++;
+
+      // Level up every 1000m
+      if (distance % 1000 === 0) {
+        level++;
+      }
+
+      if (frame % 600 === 0) speed += 1;
+
+      wolf.dy += wolf.gravity;
+      wolf.y += wolf.dy;
+
+      if (wolf.y > canvas.height - wolf.height - 50) {
+        wolf.y = canvas.height - wolf.height - 50;
+        wolf.dy = 0;
+        wolf.isJumping = false;
+        wolf.rotation = 0;
+      }
+
+      if (wolf.isJumping) wolf.rotation += 0.3;
+
+      spawnObstacles();
+      spawnMoons();
+
+      obstacles.forEach((rock, i) => {
+        rock.x -= speed;
+        if (detectCollision(wolf, rock, 0.4)) {
+          gameOver = true;
+          bgm.pause();
+          bgm.currentTime = 0;
+          gameoverSound.play();
+          best = Math.max(best, score);
+        }
+        if (rock.x + rock.width < 0) obstacles.splice(i, 1);
+      });
+
+      moons.forEach((moon, i) => {
+        moon.x -= speed;
+        if (detectCollision(wolf, moon, 0.6)) {
+          score += level; // each level increases token value
+          coinSound.currentTime = 0;
+          coinSound.play();
+          moons.splice(i, 1);
+        }
+        if (moon.x + moon.width < 0) moons.splice(i, 1);
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+      if (!started) {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("WOLFSWAP RUNNER", canvas.width / 2 - 200, canvas.height / 2 - 20);
+        ctx.font = "20px Arial";
+        ctx.fillText("Press SPACE or TAP to start", canvas.width / 2 - 160, canvas.height / 2 + 20);
+        return;
+      }
+
+      ctx.save();
+      ctx.translate(wolf.x + wolf.width / 2, wolf.y + wolf.height / 2);
+      ctx.rotate(wolf.rotation);
+      ctx.drawImage(wolfImg, -wolf.width / 2, -wolf.height / 2, wolf.width, wolf.height);
+      ctx.restore();
+
+      obstacles.forEach((rock) => ctx.drawImage(rockImg, rock.x, rock.y, rock.width, rock.height));
+      moons.forEach((moon) => ctx.drawImage(moonImg, moon.x, moon.y, moon.width, moon.height));
+
+      // HUD
+      ctx.fillStyle = "#014d27";
+      ctx.font = "22px Arial";
+      ctx.textAlign = "right";
+      ctx.fillText("$MOON: " + score, canvas.width - 20, 30);
+      ctx.fillText("DIST: " + distance + "m", canvas.width - 20, 60);
+      ctx.fillText("BEST: " + best, canvas.width - 20, 90);
+      ctx.fillText("LEVEL: " + level, canvas.width - 20, 120);
+
+      if (gameOver) {
+        ctx.fillStyle = "white";
+        ctx.font = "50px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = "24px Arial";
+        ctx.fillText("Press R or TAP to restart", canvas.width / 2, canvas.height / 2 + 30);
+      }
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
